@@ -441,27 +441,6 @@ resource "aws_iam_role" "mod_ec2_instance_role" {
   path               = "/"
 }
 
-resource "aws_iam_role_policy_attachment" "attach_core_ssm_policy" {
-  count = var.instance_profile_override ? 0 : 1
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-  role       = aws_iam_role.mod_ec2_instance_role[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "attach_cw_ssm_policy" {
-  count = var.instance_profile_override ? 0 : 1
-
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-  role       = aws_iam_role.mod_ec2_instance_role[0].name
-}
-
-resource "aws_iam_role_policy_attachment" "attach_ad_ssm_policy" {
-  count = var.instance_profile_override ? 0 : 1
-
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMDirectoryServiceAccess"
-  role       = aws_iam_role.mod_ec2_instance_role[0].name
-}
-
 resource "aws_iam_role_policy_attachment" "attach_codedeploy_policy" {
   count = var.install_codedeploy_agent && var.instance_profile_override != true ? 1 : 0
 
@@ -580,15 +559,6 @@ resource "aws_autoscaling_policy" "ec2_scale_up_policy" {
   scaling_adjustment     = var.ec2_scale_up_adjustment
 }
 
-resource "aws_autoscaling_policy" "ec2_scale_down_policy" {
-  count = var.enable_scaling_actions ? var.asg_count : 0
-
-  adjustment_type        = "ChangeInCapacity"
-  autoscaling_group_name = element(aws_autoscaling_group.autoscalegrp.*.name, count.index)
-  cooldown               = var.ec2_scale_down_cool_down
-  name                   = join("-", compact(["ec2_scale_down_policy", var.name, format("%03d", count.index + 1)]))
-  scaling_adjustment     = var.ec2_scale_down_adjustment > 0 ? -var.ec2_scale_down_adjustment : var.ec2_scale_down_adjustment
-}
 
 resource "aws_autoscaling_group" "autoscalegrp" {
   count = var.asg_count
@@ -603,6 +573,7 @@ resource "aws_autoscaling_group" "autoscalegrp" {
   target_group_arns         = var.target_group_arns
   vpc_zone_identifier       = var.subnets
   wait_for_capacity_timeout = var.asg_wait_for_capacity_timeout
+  wait_for_elb_capacity     = var.wait_for_elb_capacity
 
   launch_configuration = element(coalescelist(
     aws_launch_configuration.launch_config_with_secondary_ebs.*.name,
@@ -686,27 +657,6 @@ data "null_data_source" "alarm_dimensions" {
   }
 }
 
-module "group_terminating_instances" {
-  source = "git@github.com:rackspace-infrastructure-automation/aws-terraform-cloudwatch_alarm//?ref=v0.12.0"
-
-  alarm_count              = var.asg_count
-  alarm_description        = "Over ${var.terminated_instances} instances terminated in last 6 hours, generating ticket to investigate."
-  alarm_name               = "${var.name}-GroupTerminatingInstances}"
-  comparison_operator      = "GreaterThanThreshold"
-  dimensions               = data.null_data_source.alarm_dimensions.*.outputs
-  evaluation_periods       = 1
-  metric_name              = "GroupTerminatingInstances"
-  namespace                = "AWS/AutoScaling"
-  notification_topic       = var.notification_topic
-  period                   = 21600
-  rackspace_alarms_enabled = var.rackspace_alarms_enabled
-  rackspace_managed        = var.rackspace_managed
-  severity                 = "emergency"
-  statistic                = "Sum"
-  threshold                = var.terminated_instances
-  unit                     = "Count"
-}
-
 resource "aws_cloudwatch_metric_alarm" "scale_alarm_high" {
   count = var.enable_scaling_actions ? var.asg_count : 0
 
@@ -720,25 +670,6 @@ resource "aws_cloudwatch_metric_alarm" "scale_alarm_high" {
   period              = var.cw_high_period
   statistic           = "Average"
   threshold           = var.cw_high_threshold
-
-  dimensions = {
-    AutoScalingGroupName = element(aws_autoscaling_group.autoscalegrp.*.name, count.index)
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "scale_alarm_low" {
-  count = var.enable_scaling_actions ? var.asg_count : 0
-
-  alarm_actions       = [element(aws_autoscaling_policy.ec2_scale_down_policy.*.arn, count.index)]
-  alarm_description   = "Scale-down if ${var.cw_scaling_metric} ${var.cw_low_operator} ${var.cw_low_threshold}% for ${var.cw_low_period} seconds ${var.cw_low_evaluations} times."
-  alarm_name          = join("-", compact(["ScaleAlarmLow", var.name, format("%03d", count.index + 1)]))
-  comparison_operator = var.cw_low_operator
-  evaluation_periods  = var.cw_low_evaluations
-  metric_name         = var.cw_scaling_metric
-  namespace           = "AWS/EC2"
-  period              = var.cw_low_period
-  statistic           = "Average"
-  threshold           = var.cw_low_threshold
 
   dimensions = {
     AutoScalingGroupName = element(aws_autoscaling_group.autoscalegrp.*.name, count.index)

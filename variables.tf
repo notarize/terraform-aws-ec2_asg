@@ -22,6 +22,12 @@ variable "asg_wait_for_capacity_timeout" {
   default     = "10m"
 }
 
+variable "wait_for_elb_capacity" {
+  description = "Terraform to wait for exactly this number of healthy instances in all attached load balancers on both create and update operations."
+  type        = string
+  default     = "2"
+}
+
 variable "backup_tag_value" {
   description = "Value of the 'Backup' tag, used to assign te EBSSnapper configuration"
   type        = string
@@ -156,7 +162,7 @@ variable "enable_scaling_notification" {
 variable "encrypt_primary_ebs_volume" {
   description = "Encrypt root EBS Volume? true or false"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "encrypt_secondary_ebs_volume" {
