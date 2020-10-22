@@ -527,7 +527,6 @@ resource "aws_launch_configuration" "launch_config_no_secondary_ebs" {
   name_prefix       = join("-", compact(["LaunchConfigNo2ndEbs", var.name, format("%03d-", count.index + 1)]))
   placement_tenancy = var.tenancy
   security_groups   = var.security_groups
-  user_data_base64  = base64encode(data.template_file.user_data.rendered)
 
   iam_instance_profile = element(
     coalescelist(
@@ -648,14 +647,6 @@ resource "aws_autoscaling_notification" "rs_support_emergency" {
 
 #
 # Provisioning of CloudWatch related resources
-#
-data "null_data_source" "alarm_dimensions" {
-  count = var.asg_count
-
-  inputs = {
-    AutoScalingGroupName = element(aws_autoscaling_group.autoscalegrp.*.name, count.index)
-  }
-}
 
 resource "aws_cloudwatch_metric_alarm" "scale_alarm_high" {
   count = var.enable_scaling_actions ? var.asg_count : 0
